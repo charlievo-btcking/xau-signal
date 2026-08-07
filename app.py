@@ -7,7 +7,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 
 from config import CFG
@@ -38,17 +37,33 @@ PNL = "#070706"
 st.markdown("""<style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
 
-#MainMenu, footer, header[data-testid="stHeader"] {display:none;}
+#MainMenu, footer {display:none;}
+header[data-testid="stHeader"] {background:transparent; height:0;
+  pointer-events:none;}
+[data-testid="stSidebarCollapsedControl"] {display:block !important; z-index:999;
+  pointer-events:auto;}
+[data-testid="stSidebarCollapsedControl"] svg {color:#FF9E1B; fill:#FF9E1B;}
 .stApp {background:#000000;}
 .block-container {padding:0.6rem 1.4rem 3rem 1.4rem; max-width:100%;}
 html, body, [class*="css"], .stApp, p, div, span, label, th, td, input, button {
   font-family:'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace !important;
 }
+/* Icon của Streamlit phải giữ font riêng, ép monospace sẽ hiện ra tên icon */
+[data-testid="stIconMaterial"], .material-symbols-rounded, .material-symbols-outlined,
+span[data-testid="stIconMaterial"], [class*="material-symbols"] {
+  font-family:'Material Symbols Rounded','Material Symbols Outlined' !important;
+  color:#FF9E1B;
+}
 
 /* ---------- thanh chức năng ---------- */
 .fnbar {display:flex; align-items:center; justify-content:space-between;
         border-top:2px solid #FF9E1B; border-bottom:1px solid #2A1E08;
-        padding:7px 2px 8px 2px; margin-bottom:14px;}
+        padding:7px 2px 8px 2px; margin-bottom:14px;
+        position:relative; z-index:5;}
+.fnbar a.tv {color:#FF9E1B; text-decoration:none; border:1px solid #FF9E1B;
+             padding:5px 12px; margin-right:16px; letter-spacing:1.4px;
+             display:inline-block; cursor:pointer;}
+.fnbar a.tv:hover {background:#FF9E1B; color:#000;}
 .fnbar .sym {color:#FF9E1B; font-size:19px; font-weight:700; letter-spacing:3px;}
 .fnbar .sub {color:#6E6558; font-size:10.5px; letter-spacing:2px; margin-left:14px;}
 .fnbar .rt {color:#8C6314; font-size:10.5px; letter-spacing:1.6px;}
@@ -104,7 +119,8 @@ section[data-testid="stSidebar"] h3 {color:#FF9E1B !important; font-size:10px !i
   letter-spacing:2.4px; text-transform:uppercase; border-bottom:1px solid #2A1E08;
   padding-bottom:6px; margin:20px 0 12px 0;}
 section[data-testid="stSidebar"] label {color:#8C6314 !important; font-size:10.5px !important;
-  letter-spacing:1px;}
+  letter-spacing:0.4px; line-height:1.5;}
+section[data-testid="stSidebar"] [data-testid="stWidgetLabel"] {margin-bottom:2px;}
 section[data-testid="stSidebar"] input, section[data-testid="stSidebar"] [data-baseweb="select"] > div {
   background:#0D0C0A !important; border:1px solid #2A1E08 !important; border-radius:0 !important;
   color:#DCD5C6 !important;}
@@ -170,21 +186,35 @@ def sidebar():
     rp = st.sidebar.number_input("Rủi ro / lệnh (%)", 0.1, 5.0,
                                  qp("rp", CFG.risk_pct, float), 0.1)
 
-    with st.sidebar.expander("Cài đặt nâng cao"):
-        spread = st.number_input("Spread giả định", 0.0, 5.0, CFG.assumed_spread, 0.05)
-        rr = st.number_input("RR tối thiểu", 1.0, 5.0, CFG.min_rr, 0.5)
-        cap = st.slider("Trần SL (× ATR H1)", 0.6, 3.0, CFG.sl_max_atr_h1, 0.1)
-        s1 = st.checkbox("Phiên London 14:00–18:00", True)
-        s2 = st.checkbox("Phiên New York 19:30–23:00", True)
-        ig = st.checkbox("Bỏ qua bộ lọc phiên", False)
-        saver = st.checkbox("Chỉ hỏi giá trong phiên", CFG.quote_in_session_only)
-        autolog = st.checkbox("Tự ghi nhật ký", True)
+    # Không dùng st.expander — CSS nền đen của app làm tiêu đề nó chồng chữ.
+    # Ô tick + session_state cho kết quả y hệt mà không lỗi hiển thị.
+    st.sidebar.markdown("### Nâng cao")
+    adv = st.sidebar.checkbox("Hiện cài đặt nâng cao", False)
+
+    def _adv(key, default, widget=None, *args, **kw):
+        if adv and widget is not None:
+            return widget(*args, key=key, **kw)
+        return st.session_state.get(key, default)
+
+    spread = _adv("a_spread", CFG.assumed_spread, st.sidebar.number_input,
+                  "Spread giả định", 0.0, 5.0, CFG.assumed_spread, 0.05)
+    rr = _adv("a_rr", CFG.min_rr, st.sidebar.number_input,
+              "RR tối thiểu", 1.0, 5.0, CFG.min_rr, 0.5)
+    cap = _adv("a_cap", CFG.sl_max_atr_h1, st.sidebar.slider,
+               "Trần SL (× ATR H1)", 0.6, 3.0, CFG.sl_max_atr_h1, 0.1)
+    s1 = _adv("a_s1", True, st.sidebar.checkbox, "Phiên London 14:00–18:00", True)
+    s2 = _adv("a_s2", True, st.sidebar.checkbox, "Phiên New York 19:30–23:00", True)
+    ig = _adv("a_ig", False, st.sidebar.checkbox, "Bỏ qua bộ lọc phiên", False)
+    saver = _adv("a_saver", CFG.quote_in_session_only, st.sidebar.checkbox,
+                 "Chỉ hỏi giá trong phiên", CFG.quote_in_session_only)
+    autolog = _adv("a_log", True, st.sidebar.checkbox, "Tự ghi nhật ký", True)
 
     sessions = ([("14:00", "18:00")] if s1 else []) + ([("19:30", "23:00")] if s2 else [])
     if ig:
         sessions = [("00:00", "23:59")]
 
-    st.sidebar.button("VẼ LẠI", width='stretch')
+    st.sidebar.button("TẢI LẠI DỮ LIỆU", width='stretch',
+                      help="Buộc lấy lại nến và giá ngay, tốn khoảng 4 credit.")
     st.sidebar.caption(f"{dc.usage()} / 800 credit hôm nay")
 
     spec = dc.symbol_spec(sym)
@@ -307,57 +337,6 @@ def score_rail(sig):
     st.markdown("".join(rows), unsafe_allow_html=True)
 
 
-def chart(sig, m15, cfg, bars=90):
-    d = m15.tail(bars)
-    fig = go.Figure()
-    fig.add_trace(go.Candlestick(
-        x=d.index, open=d["open"], high=d["high"], low=d["low"], close=d["close"],
-        increasing=dict(line=dict(color=UP, width=1), fillcolor=UP),
-        decreasing=dict(line=dict(color=DN, width=1), fillcolor=DN), name="M15"))
-    fig.add_trace(go.Scatter(x=d.index, y=d["ema_fast"], mode="lines", name="EMA20",
-                             line=dict(color=AMB, width=1.1)))
-    fig.add_trace(go.Scatter(x=d.index, y=d["ema_slow"], mode="lines", name="EMA50",
-                             line=dict(color=AMD, width=1.1)))
-    if "vwap" in d:
-        fig.add_trace(go.Scatter(x=d.index, y=d["vwap"], mode="lines", name="VWAP",
-                                 line=dict(color=DIM, width=1, dash="dot")))
-
-    lo, hi = float(d["low"].min()), float(d["high"].max())
-    pad = (hi - lo) * 0.06
-    x0, x1 = d.index[0], d.index[-1]
-    for z in sig.zones[:16]:
-        if z.hi < lo - pad or z.lo > hi + pad:
-            continue
-        fig.add_shape(type="rect", x0=x0, x1=x1, y0=z.lo, y1=z.hi, layer="below",
-                      fillcolor=AMB, opacity=0.04 + 0.09 * min(1, z.score / 100),
-                      line=dict(width=0))
-        fig.add_annotation(x=x1, y=z.hi, text=f"{ZK.get(z.kind, z.kind)} {z.score:.0f}",
-                           showarrow=False, xanchor="right", yanchor="bottom",
-                           font=dict(size=8.5, color=AMD, family="IBM Plex Mono"))
-
-    if sig.entry_zone:
-        fig.add_hrect(y0=sig.entry_zone[0], y1=sig.entry_zone[1], line_width=0,
-                      fillcolor=AMB, opacity=0.05)
-
-    p = sig.plan
-    if p and sig.direction != "WAIT" and p.reject is None:
-        for y, c, t in ((p.entry, INK, "ENTRY"), (p.sl, DN, "SL"), (p.tp, UP, "TP")):
-            fig.add_hline(y=y, line=dict(color=c, width=1, dash="dash"),
-                          annotation_text=f"{t} {y:,.2f}", annotation_position="left",
-                          annotation_font=dict(size=9.5, color=c, family="IBM Plex Mono"))
-
-    fig.update_layout(
-        height=640, margin=dict(l=6, r=6, t=10, b=6),
-        paper_bgcolor=BG, plot_bgcolor="#040403", showlegend=False,
-        font=dict(color=AMD, size=10, family="IBM Plex Mono"),
-        xaxis_rangeslider_visible=False,
-        xaxis=dict(gridcolor="#14100A", linecolor=RUL, zeroline=False,
-                   showspikes=True, spikecolor=AMD, spikethickness=1, spikedash="dot"),
-        yaxis=dict(gridcolor="#14100A", linecolor=RUL, zeroline=False, side="right",
-                   showspikes=True, spikecolor=AMD, spikethickness=1, spikedash="dot"))
-    st.plotly_chart(fig, width='stretch', config={"displayModeBar": False})
-
-
 def zones_tab(sig):
     if not sig.zones:
         st.markdown('<div class="cap">Chưa dựng được vùng nào.</div>', unsafe_allow_html=True)
@@ -455,7 +434,7 @@ src = "TWELVE DATA"
 st.markdown(f"""<div class="fnbar">
   <div><span class="sym">{sym}</span>
        <span class="sub">M15 ENTRY · H1 VÙNG · H4 XU HƯỚNG</span></div>
-  <div class="rt">{src} · {pd.Timestamp.now(tz=TZ):%H:%M} GIỜ VN</div>
+<div class="rt"><a class="tv" href="https://www.tradingview.com/chart/?symbol=OANDA%3AXAUUSD" target="_blank" rel="noopener">MỞ BIỂU ĐỒ ↗</a>{src} · {pd.Timestamp.now(tz=TZ):%H:%M} GIỜ VN</div>
 </div>""", unsafe_allow_html=True)
 
 
@@ -517,9 +496,7 @@ def live_panel():
 live_panel()
 st.write("")
 
-t1, t2, t3, t4, t5 = st.tabs(["BIỂU ĐỒ", "ĐIỂM CHI TIẾT", "VÙNG S/R", "NHẬT KÝ", "THỐNG KÊ"])
-with t1:
-    chart(sig_static, m15, cfg)
+t2, t3, t4, t5 = st.tabs(["ĐIỂM CHI TIẾT", "VÙNG S/R", "NHẬT KÝ", "THỐNG KÊ"])
 with t2:
     score_rail(sig_static)
 with t3:
